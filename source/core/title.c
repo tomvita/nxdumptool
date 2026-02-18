@@ -60,6 +60,7 @@ static Mutex g_titleMutex = 0;
 static Thread g_titleGameCardInfoThread = {0};
 static UEvent g_titleGameCardInfoThreadExitEvent = {0}, *g_titleGameCardStatusChangeUserEvent = NULL;
 static bool g_titleInterfaceInit = false, g_titleGameCardInfoThreadCreated = false, g_titleGameCardAvailable = false, g_titleGameCardInfoUpdated = false;
+static bool g_titleFastInit = false;
 
 static NsApplicationControlData *g_nsAppControlData = NULL;
 
@@ -647,33 +648,36 @@ bool titleInitialize(void)
         /* Initialize the title cache subinterface. */
         nxtcInitialize();
 
-        /* Prefer manual control data retrieval from Control NCAs over ns under HOS 20.0.0+. */
-        /* ns is just too slow for our needs nowadays. */
-        g_useNsControlData = hosversionBefore(20, 0, 0);
-
-        /* Allocate memory for the ns application control data. */
-        /* This will be used each time we need to retrieve the metadata from an application. */
-        g_nsAppControlData = calloc(1, sizeof(NsApplicationControlData));
-        if (!g_nsAppControlData)
+        if (!g_titleFastInit)
         {
-            LOG_MSG_ERROR("Failed to allocate memory for the ns application control data!");
-            break;
-        }
+            /* Prefer manual control data retrieval from Control NCAs over ns under HOS 20.0.0+. */
+            /* ns is just too slow for our needs nowadays. */
+            g_useNsControlData = hosversionBefore(20, 0, 0);
 
-        /* Generate application metadata entries from hardcoded system titles, since we can't retrieve their names via ns. */
-        if (!titleGenerateMetadataEntriesFromSystemTitles())
-        {
-            LOG_MSG_ERROR("Failed to generate application metadata from hardcoded system titles!");
-            break;
-        }
+            /* Allocate memory for the ns application control data. */
+            /* This will be used each time we need to retrieve the metadata from an application. */
+            g_nsAppControlData = calloc(1, sizeof(NsApplicationControlData));
+            if (!g_nsAppControlData)
+            {
+                LOG_MSG_ERROR("Failed to allocate memory for the ns application control data!");
+                break;
+            }
 
-        /* Generate application metadata entries from ns records if we're not running under HOS 20.0.0+. */
-        /* Theoretically speaking, we should only need to do this once. */
-        /* However, if any new gamecard is inserted while the application is running, we *will* have to retrieve the metadata from its application(s). */
-        if (g_useNsControlData && !titleGenerateMetadataEntriesFromNsRecords())
-        {
-            LOG_MSG_ERROR("Failed to generate application metadata from ns records!");
-            break;
+            /* Generate application metadata entries from hardcoded system titles, since we can't retrieve their names via ns. */
+            if (!titleGenerateMetadataEntriesFromSystemTitles())
+            {
+                LOG_MSG_ERROR("Failed to generate application metadata from hardcoded system titles!");
+                break;
+            }
+
+            /* Generate application metadata entries from ns records if we're not running under HOS 20.0.0+. */
+            /* Theoretically speaking, we should only need to do this once. */
+            /* However, if any new gamecard is inserted while the application is running, we *will* have to retrieve the metadata from its application(s). */
+            if (g_useNsControlData && !titleGenerateMetadataEntriesFromNsRecords())
+            {
+                LOG_MSG_ERROR("Failed to generate application metadata from ns records!");
+                break;
+            }
         }
 
         /* Initialize persistent title storages (BuiltInSystem, BuiltInUser, SdCard). */
@@ -684,31 +688,42 @@ bool titleInitialize(void)
             break;
         }
 
-        /* Generate filtered system application metadata pointer array. */
-        titleGenerateFilteredApplicationMetadataPointerArray(true);
-
-        /* Generate filtered user application metadata pointer array. */
-        titleGenerateFilteredApplicationMetadataPointerArray(false);
-
-        /* Create user-mode exit event. */
-        ueventCreate(&g_titleGameCardInfoThreadExitEvent, true);
-
-        /* Retrieve gamecard status change user event. */
-        g_titleGameCardStatusChangeUserEvent = gamecardGetStatusChangeUserEvent();
-        if (!g_titleGameCardStatusChangeUserEvent)
+        if (!g_titleFastInit)
         {
-            LOG_MSG_ERROR("Failed to retrieve gamecard status change user event!");
-            break;
-        }
+            /* Generate filtered system application metadata pointer array. */
+            titleGenerateFilteredApplicationMetadataPointerArray(true);
 
-        /* Create gamecard title info thread. */
-        if (!(g_titleGameCardInfoThreadCreated = titleCreateGameCardInfoThread())) break;
+            /* Generate filtered user application metadata pointer array. */
+            titleGenerateFilteredApplicationMetadataPointerArray(false);
+
+            /* Create user-mode exit event. */
+            ueventCreate(&g_titleGameCardInfoThreadExitEvent, true);
+
+            /* Retrieve gamecard status change user event. */
+            g_titleGameCardStatusChangeUserEvent = gamecardGetStatusChangeUserEvent();
+            if (!g_titleGameCardStatusChangeUserEvent)
+            {
+                LOG_MSG_ERROR("Failed to retrieve gamecard status change user event!");
+                break;
+            }
+
+            /* Create gamecard title info thread. */
+            if (!(g_titleGameCardInfoThreadCreated = titleCreateGameCardInfoThread())) break;
+        }
 
         /* Update flags. */
         ret = g_titleInterfaceInit = true;
     }
 
     return ret;
+}
+
+void titleSetFastInitialization(bool enabled)
+{
+    SCOPED_LOCK(&g_titleMutex)
+    {
+        g_titleFastInit = enabled;
+    }
 }
 
 void titleExit(void)
@@ -1450,22 +1465,25 @@ NX_INLINE bool titleInitializePersistentTitleStorages(void)
         }
     }
 
-    /* Initialize TitleApplicationMetadata pointers in TitleInfo elements within the populated title storages. */
-    /* This is done in a separate loop to make sure all TitleInfo data from all persistent title storages is loaded beforehand because we may have to load application metadata by hand from Control NCAs. */
-    /* If this ends up being the case, we will prefer using application metadata from updates. */
-    for(u8 i = NcmStorageId_BuiltInSystem; i <= NcmStorageId_SdCard; i++) titleInitializeApplicationMetadataPointersWithinTitleStorage(i);
+    if (!g_titleFastInit)
+    {
+        /* Initialize TitleApplicationMetadata pointers in TitleInfo elements within the populated title storages. */
+        /* This is done in a separate loop to make sure all TitleInfo data from all persistent title storages is loaded beforehand because we may have to load application metadata by hand from Control NCAs. */
+        /* If this ends up being the case, we will prefer using application metadata from updates. */
+        for(u8 i = NcmStorageId_BuiltInSystem; i <= NcmStorageId_SdCard; i++) titleInitializeApplicationMetadataPointersWithinTitleStorage(i);
 
-    /* Flush title cache file. */
-    nxtcFlushCacheFile();
+        /* Flush title cache file. */
+        nxtcFlushCacheFile();
 
-    /* Update linked lists for user applications, patches and add-on contents. */
-    /* This will also keep track of orphan titles -- titles with no available application metadata. */
-    titleUpdateTitleInfoLinkedLists();
+        /* Update linked lists for user applications, patches and add-on contents. */
+        /* This will also keep track of orphan titles -- titles with no available application metadata. */
+        titleUpdateTitleInfoLinkedLists();
+    }
 
 #if LOG_LEVEL <= LOG_LEVEL_INFO
 #define ORPHAN_INFO_LOG(fmt, ...) utilsAppendFormattedStringToBuffer(&orphan_info_buf, &orphan_info_buf_size, fmt, ##__VA_ARGS__)
 
-    if (g_orphanTitleInfo && g_orphanTitleInfoCount)
+    if (!g_titleFastInit && g_orphanTitleInfo && g_orphanTitleInfoCount)
     {
         char *orphan_info_buf = NULL;
         size_t orphan_info_buf_size = 0;

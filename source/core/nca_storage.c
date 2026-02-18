@@ -30,8 +30,7 @@ static bool ncaStorageInitializeCompressedStorageBucketTreeContext(NcaStorageCon
 
 bool ncaStorageInitializeContext(NcaStorageContext *out, NcaFsSectionContext *nca_fs_ctx, NcaStorageContext *base_ctx)
 {
-    if (!out || !nca_fs_ctx || !nca_fs_ctx->enabled || (nca_fs_ctx->section_type == NcaFsSectionType_PatchRomFs && \
-        (!nca_fs_ctx->has_patch_indirect_layer || nca_fs_ctx->has_sparse_layer)))
+    if (!out || !nca_fs_ctx || !nca_fs_ctx->enabled || (nca_fs_ctx->section_type == NcaFsSectionType_PatchRomFs && !nca_fs_ctx->has_patch_indirect_layer))
     {
         LOG_MSG_ERROR("Invalid parameters!");
         return false;

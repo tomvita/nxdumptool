@@ -99,7 +99,7 @@ NX_INLINE u64 signatureGetBlockSizeByType(SignatureType type)
 NX_INLINE SignatureType signatureGetTypeFromSignedBlob(void *buf, bool big_endian_sig_type)
 {
     if (!buf) return SignatureType_Invalid;
-    return (big_endian_sig_type ? __builtin_bswap32(*((u32*)buf)) : *((u32*)buf));
+    return (SignatureType)(big_endian_sig_type ? __builtin_bswap32(*((u32*)buf)) : *((u32*)buf));
 }
 
 NX_INLINE u8 *signatureGetSigFromSignedBlob(void *buf)

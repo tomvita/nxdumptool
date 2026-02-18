@@ -95,6 +95,11 @@ typedef enum : u8 {
 /// Initializes the title interface.
 bool titleInitialize(void);
 
+/// Enables/disables fast initialization mode.
+/// When enabled, title metadata generation and background gamecard title thread setup are skipped.
+/// This is useful for extraction-only flows that only require raw TitleInfo/content records.
+void titleSetFastInitialization(bool enabled);
+
 /// Closes the title interface.
 void titleExit(void);
 

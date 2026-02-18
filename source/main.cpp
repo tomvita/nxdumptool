@@ -20,6 +20,8 @@
  */
 
 #include <core/nxdt_utils.h>
+#include <core/title.h>
+#include <core/title_extract.h>
 #include <utils/scope_guard.hpp>
 #include <views/root_view.hpp>
 
@@ -27,6 +29,102 @@ namespace i18n = brls::i18n;    /* For getStr(). */
 using namespace i18n::literals; /* For _i18n. */
 
 bool g_borealisInitialized = false;
+
+static bool parseBreezeTitleIdFromConfig(u64 *out_title_id)
+{
+    if (!out_title_id)
+    {
+        LOG_MSG_ERROR("Invalid parameters!");
+        return false;
+    }
+
+    FILE *fp = fopen("sdmc:/switch/breeze/config.ini", "rb");
+    if (!fp)
+    {
+        LOG_MSG_ERROR("Failed to open Breeze config file.");
+        return false;
+    }
+
+    bool success = false;
+    char line[512] = {0};
+
+    while(fgets(line, sizeof(line), fp))
+    {
+        utilsTrimString(line);
+        if (!line[0] || line[0] == '#' || line[0] == ';') continue;
+
+        /* Support INI-style "key = value", with optional inline comments. */
+        char *eq = strchr(line, '=');
+        if (!eq) continue;
+
+        *eq = '\0';
+        char *key = line;
+        char *value = eq + 1;
+
+        utilsTrimString(key);
+        utilsTrimString(value);
+
+        if (strcmp(key, "save_application_id") != 0) continue;
+
+        /* Strip inline comments. */
+        char *comment = strpbrk(value, "#;");
+        if (comment)
+        {
+            *comment = '\0';
+            utilsTrimString(value);
+        }
+
+        if (value[0] == '0' && (value[1] == 'x' || value[1] == 'X')) value += 2;
+
+        size_t value_len = strlen(value);
+        if (!value_len || value_len > 16)
+        {
+            LOG_MSG_ERROR("Invalid save_application_id length in Breeze config.");
+            break;
+        }
+
+        for(size_t i = 0; i < value_len; i++)
+        {
+            if (!isxdigit((unsigned char)value[i]))
+            {
+                LOG_MSG_ERROR("Invalid save_application_id value in Breeze config.");
+                goto end;
+            }
+        }
+
+        *out_title_id = strtoull(value, NULL, 16);
+        success = (*out_title_id != 0);
+        if (success) LOG_MSG_INFO("Parsed Breeze target title ID: %016lX.", *out_title_id);
+        break;
+    }
+
+end:
+    fclose(fp);
+
+    if (!success) LOG_MSG_ERROR("save_application_id not found or invalid in Breeze config.");
+    return success;
+}
+
+static void runBreezeExtractionAndReturn(void)
+{
+    u64 app_title_id = 0;
+    TitleExtractResult extract_result = {0};
+
+    if (parseBreezeTitleIdFromConfig(&app_title_id))
+    {
+        bool ok = titleExtractMainAndGlobalMetadata(app_title_id, "sdmc:/switch/breeze/cheats", &extract_result);
+
+        LOG_MSG_INFO("Breeze extract target title: %016lX.", app_title_id);
+        LOG_MSG_INFO("main extraction: %s (%s).", extract_result.main_extracted ? "OK" : "FAILED", extract_result.main_path);
+        LOG_MSG_INFO("global-metadata.dat extraction: %s (%s).", extract_result.metadata_extracted ? "OK" : "FAILED", extract_result.metadata_path);
+        LOG_MSG_INFO("Breeze extract result: %s.", ok ? "SUCCESS" : "PARTIAL/FAILED");
+    }
+
+    /* Flush pending SD filesystem changes before handing control back. */
+    utilsCommitSdCardFileSystemChanges();
+
+    envSetNextLoad("sdmc:/switch/breeze/Breeze.nro", "sdmc:/switch/breeze/Breeze.nro");
+}
 
 int main(int argc, char *argv[])
 {
@@ -36,8 +134,15 @@ int main(int argc, char *argv[])
     /* Set scope guard to clean up resources at exit. */
     ON_SCOPE_EXIT { utilsCloseResources(); };
 
+    /* Extraction helper mode doesn't need full title metadata/UI preparation. */
+    titleSetFastInitialization(true);
+
     /* Initialize application resources. */
     if (!utilsInitializeResources()) return EXIT_FAILURE;
+
+    /* Breeze helper mode: extract target files and chainload back to Breeze. */
+    runBreezeExtractionAndReturn();
+    return EXIT_SUCCESS;
 
     /* Load Borealis translation files. */
     brls::i18n::loadTranslations();

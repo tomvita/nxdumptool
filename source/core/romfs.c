@@ -44,11 +44,10 @@ bool romfsInitializeContext(RomFileSystemContext *out, NcaFsSectionContext *base
     bool missing_base_romfs = (!base_nca_fs_ctx || !base_nca_fs_ctx->enabled || (base_nca_fs_ctx->section_type != NcaFsSectionType_RomFs && \
                                base_nca_fs_ctx->section_type != NcaFsSectionType_Nca0RomFs));
 
-    if (!out || (!patch_nca_fs_ctx && (missing_base_romfs || base_nca_fs_ctx->has_sparse_layer)) || \
+    if (!out || (!patch_nca_fs_ctx && missing_base_romfs) || \
         (!missing_base_romfs && (!(base_nca_ctx = base_nca_fs_ctx->nca_ctx) || (base_nca_ctx->format_version == NcaVersion_Nca0 && \
-        (base_nca_fs_ctx->section_type != NcaFsSectionType_Nca0RomFs || base_nca_fs_ctx->hash_type != NcaHashType_HierarchicalSha256)) || \
-        (base_nca_ctx->format_version != NcaVersion_Nca0 && (base_nca_fs_ctx->section_type != NcaFsSectionType_RomFs || \
-        (base_nca_fs_ctx->hash_type != NcaHashType_HierarchicalIntegrity && base_nca_fs_ctx->hash_type != NcaHashType_HierarchicalIntegritySha3))) || \
+        base_nca_fs_ctx->section_type != NcaFsSectionType_Nca0RomFs) || (base_nca_ctx->format_version != NcaVersion_Nca0 && \
+        base_nca_fs_ctx->section_type != NcaFsSectionType_RomFs) || \
         (base_nca_ctx->rights_id_available && !base_nca_ctx->titlekey_retrieved))) || (patch_nca_fs_ctx && (!patch_nca_fs_ctx->enabled || \
         !(patch_nca_ctx = patch_nca_fs_ctx->nca_ctx) || (!missing_base_romfs && patch_nca_ctx->format_version != base_nca_ctx->format_version) || \
         patch_nca_fs_ctx->section_type != NcaFsSectionType_PatchRomFs || (patch_nca_ctx->rights_id_available && !patch_nca_ctx->titlekey_retrieved))))

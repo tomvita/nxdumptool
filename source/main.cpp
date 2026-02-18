@@ -31,24 +31,36 @@ using namespace i18n::literals; /* For _i18n. */
 
 bool g_borealisInitialized = false;
 static bool g_breezeConsoleInitialized = false;
+static bool g_breezeScreenHeaderPrinted = false;
+static bool g_breezeScreenTargetPrinted = false;
 
 static void breezeRenderStatusScreen(const char *status, u64 title_id, const TitleExtractResult *extract_result, bool finished)
 {
     if (!g_breezeConsoleInitialized) return;
 
-    consoleClear();
+    if (!g_breezeScreenHeaderPrinted)
+    {
+        consoleClear();
+        printf("nxdumptool - Breeze Helper\n\n");
+        g_breezeScreenHeaderPrinted = true;
+    }
 
-    printf("nxdumptool - Breeze Helper\n\n");
-    if (title_id) printf("Target title: %016lX\n\n", title_id);
-    if (status && *status) printf("%s\n\n", status);
+    if (title_id && !g_breezeScreenTargetPrinted)
+    {
+        printf("Target title: %016lX\n\n", title_id);
+        g_breezeScreenTargetPrinted = true;
+    }
+
+    if (status && *status) printf("%s\n", status);
 
     if (extract_result)
     {
-        printf("main: %s\n", extract_result->main_extracted ? "OK" : "FAILED");
+        printf("\nmain: %s\n", extract_result->main_extracted ? "OK" : "FAILED");
         printf("global-metadata.dat: %s\n", extract_result->metadata_extracted ? "OK" : "FAILED");
     }
 
-    if (finished) printf("\nReturning to Breeze...");
+    if (finished) printf("\nReturning to Breeze...\n");
+    else printf("\n");
 
     consoleUpdate(NULL);
 }
@@ -167,6 +179,8 @@ int main(int argc, char *argv[])
 
     consoleInit(NULL);
     g_breezeConsoleInitialized = true;
+    g_breezeScreenHeaderPrinted = false;
+    g_breezeScreenTargetPrinted = false;
     ON_SCOPE_EXIT {
         if (g_breezeConsoleInitialized)
         {

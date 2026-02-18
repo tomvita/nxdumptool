@@ -20,6 +20,7 @@
  */
 
 #include <core/nxdt_utils.h>
+#include <core/nxdt_log.h>
 #include <core/title.h>
 #include <core/title_extract.h>
 #include <utils/scope_guard.hpp>
@@ -29,6 +30,28 @@ namespace i18n = brls::i18n;    /* For getStr(). */
 using namespace i18n::literals; /* For _i18n. */
 
 bool g_borealisInitialized = false;
+static bool g_breezeConsoleInitialized = false;
+
+static void breezeRenderStatusScreen(const char *status, u64 title_id, const TitleExtractResult *extract_result, bool finished)
+{
+    if (!g_breezeConsoleInitialized) return;
+
+    consoleClear();
+
+    printf("nxdumptool - Breeze Helper\n\n");
+    if (title_id) printf("Target title: %016lX\n\n", title_id);
+    if (status && *status) printf("%s\n\n", status);
+
+    if (extract_result)
+    {
+        printf("main: %s\n", extract_result->main_extracted ? "OK" : "FAILED");
+        printf("global-metadata.dat: %s\n", extract_result->metadata_extracted ? "OK" : "FAILED");
+    }
+
+    if (finished) printf("\nReturning to Breeze...");
+
+    consoleUpdate(NULL);
+}
 
 static bool parseBreezeTitleIdFromConfig(u64 *out_title_id)
 {
@@ -110,14 +133,22 @@ static void runBreezeExtractionAndReturn(void)
     u64 app_title_id = 0;
     TitleExtractResult extract_result = {0};
 
+    breezeRenderStatusScreen("Reading Breeze config...", 0, NULL, false);
+
     if (parseBreezeTitleIdFromConfig(&app_title_id))
     {
+        breezeRenderStatusScreen("Extracting files...", app_title_id, NULL, false);
+
         bool ok = titleExtractMainAndGlobalMetadata(app_title_id, "sdmc:/switch/breeze/cheats", &extract_result);
 
-        LOG_MSG_INFO("Breeze extract target title: %016lX.", app_title_id);
-        LOG_MSG_INFO("main extraction: %s (%s).", extract_result.main_extracted ? "OK" : "FAILED", extract_result.main_path);
-        LOG_MSG_INFO("global-metadata.dat extraction: %s (%s).", extract_result.metadata_extracted ? "OK" : "FAILED", extract_result.metadata_path);
-        LOG_MSG_INFO("Breeze extract result: %s.", ok ? "SUCCESS" : "PARTIAL/FAILED");
+        breezeRenderStatusScreen(ok ? "Extraction completed successfully." : "Extraction completed with errors.", app_title_id, &extract_result, true);
+
+        LOG_MSG_DEBUG("Breeze extract target title: %016lX.", app_title_id);
+        LOG_MSG_DEBUG("main extraction: %s (%s).", extract_result.main_extracted ? "OK" : "FAILED", extract_result.main_path);
+        LOG_MSG_DEBUG("global-metadata.dat extraction: %s (%s).", extract_result.metadata_extracted ? "OK" : "FAILED", extract_result.metadata_path);
+        LOG_MSG_DEBUG("Breeze extract result: %s.", ok ? "SUCCESS" : "PARTIAL/FAILED");
+    } else {
+        breezeRenderStatusScreen("Failed to read Breeze config.", 0, NULL, true);
     }
 
     /* Flush pending SD filesystem changes before handing control back. */
@@ -134,8 +165,25 @@ int main(int argc, char *argv[])
     /* Set scope guard to clean up resources at exit. */
     ON_SCOPE_EXIT { utilsCloseResources(); };
 
+    consoleInit(NULL);
+    g_breezeConsoleInitialized = true;
+    ON_SCOPE_EXIT {
+        if (g_breezeConsoleInitialized)
+        {
+            consoleExit(NULL);
+            g_breezeConsoleInitialized = false;
+        }
+    };
+
     /* Extraction helper mode doesn't need full title metadata/UI preparation. */
     titleSetFastInitialization(true);
+    utilsSetGameCardInitialization(false);
+    utilsSetBfttfInitialization(false);
+    utilsSetSystemUpdateInitialization(false);
+    utilsSetBisStorageSystemPartitionOnly(true);
+    logSetNxLinkOutputEnabled(false);
+
+    breezeRenderStatusScreen("Initializing...", 0, NULL, false);
 
     /* Initialize application resources. */
     if (!utilsInitializeResources()) return EXIT_FAILURE;

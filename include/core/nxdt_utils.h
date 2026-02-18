@@ -68,6 +68,21 @@ typedef struct {
 /// Called at program startup.
 bool utilsInitializeResources(void);
 
+/// Enables/disables gamecard interface initialization during resource setup.
+void utilsSetGameCardInitialization(bool enabled);
+
+/// Enables/disables BFTTF interface initialization during resource setup.
+void utilsSetBfttfInitialization(bool enabled);
+
+/// Enables/disables system update interface initialization during resource setup.
+void utilsSetSystemUpdateInitialization(bool enabled);
+
+/// Enables/disables BIS storage interface initialization during resource setup.
+void utilsSetBisStorageInitialization(bool enabled);
+
+/// Enables/disables mounting only the BIS System partition during BIS storage setup.
+void utilsSetBisStorageSystemPartitionOnly(bool enabled);
+
 /// Resource deinitialization.
 /// Called at program exit.
 void utilsCloseResources(void);

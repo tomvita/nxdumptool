@@ -32,6 +32,9 @@ extern "C" {
 /// The mount name for each partition can be retrieved via bisStorageGetMountNameByBisPartitionId().
 bool bisStorageInitialize(void);
 
+/// Mounts only the eMMC `System` partition and makes it possible to perform read-only FS operations with it.
+bool bisStorageInitializeSystemPartitionOnly(void);
+
 /// Unmounts all previously mounted eMMC partitions.
 void bisStorageExit(void);
 

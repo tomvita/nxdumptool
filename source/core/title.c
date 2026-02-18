@@ -601,6 +601,7 @@ static bool titleInitializeApplicationMetadataForTitleInfoEntry(TitleInfo *title
 
 static bool titleGetMetaKeysFromContentDatabase(NcmContentMetaDatabase *ncm_db, NcmContentMetaKey **out_meta_keys, u32 *out_meta_key_count);
 static bool titleGetContentInfosByMetaKey(NcmContentMetaDatabase *ncm_db, const NcmContentMetaKey *meta_key, NcmContentInfo **out_content_infos, u32 *out_content_count);
+static TitleInfo *titleGetSingleTitleInfoEntryFromStorageFast(u8 storage_id, u64 title_id);
 
 static bool titleGetGameCardContentMetaContexts(HashFileSystemContext *hfs_ctx, TitleGameCardContentMetaContext **out_gc_meta_ctxs, u32 *out_gc_meta_ctx_count);
 static void titleFreeGameCardContentMetaContexts(TitleGameCardContentMetaContext **gc_meta_ctxs, u32 gc_meta_ctx_count);
@@ -898,7 +899,20 @@ bool titleGetUserApplicationData(u64 app_id, TitleUserApplicationData *out)
 
         /* Retrieve user application data. */
         TitleUserApplicationData user_app_data = {0};
-        if (!_titleGetUserApplicationData(app_id, &user_app_data)) break;
+        if (!_titleGetUserApplicationData(app_id, &user_app_data))
+        {
+            if (g_titleFastInit) titleFreeUserApplicationData(&user_app_data);
+            break;
+        }
+
+        if (g_titleFastInit)
+        {
+            /* Fast path returns dynamically allocated entries directly. */
+            titleFreeUserApplicationData(out);
+            *out = user_app_data;
+            ret = true;
+            break;
+        }
 
         /* Clear output. */
         titleFreeUserApplicationData(out);
@@ -1455,8 +1469,10 @@ end:
 
 NX_INLINE bool titleInitializePersistentTitleStorages(void)
 {
+    u8 first_storage_id = (g_titleFastInit ? NcmStorageId_BuiltInUser : NcmStorageId_BuiltInSystem);
+
     /* Initialize persistent title storages and populate them with TitleInfo elements. */
-    for(u8 i = NcmStorageId_BuiltInSystem; i <= NcmStorageId_SdCard; i++)
+    for(u8 i = first_storage_id; i <= NcmStorageId_SdCard; i++)
     {
         if (!titleInitializeTitleStorage(i))
         {
@@ -1555,6 +1571,13 @@ static bool titleInitializeTitleStorage(u8 storage_id)
         /* This can occur when using the "Nintendo" directory from a different console, or when the "sdmc:/Nintendo/Contents/private" file is corrupted. */
         LOG_MSG_ERROR("ncmOpenContentStorage failed for %s! (0x%X).", titleGetNcmStorageIdName(storage_id), rc);
         if (storage_id == NcmStorageId_SdCard && rc == 0x21005) success = true;
+        goto end;
+    }
+
+    /* Fast mode only needs opened NCM handles for targeted title lookups. */
+    if (g_titleFastInit)
+    {
+        success = true;
         goto end;
     }
 
@@ -3175,6 +3198,23 @@ static bool _titleGetUserApplicationData(u64 app_id, TitleUserApplicationData *o
     /* Clear output. */
     memset(out, 0, sizeof(TitleUserApplicationData));
 
+    if (g_titleFastInit)
+    {
+        u64 patch_id = titleGetPatchIdByApplicationId(app_id);
+
+        /* Keep storage precedence consistent with the regular path (BuiltInUser -> SdCard). */
+        for(u8 i = NcmStorageId_BuiltInUser; i <= NcmStorageId_SdCard; i++)
+        {
+            if (!out->app_info) out->app_info = titleGetSingleTitleInfoEntryFromStorageFast(i, app_id);
+            if (!out->patch_info) out->patch_info = titleGetSingleTitleInfoEntryFromStorageFast(i, patch_id);
+            if (out->app_info && out->patch_info) break;
+        }
+
+        ret = (out->app_info || out->patch_info);
+        if (!ret) LOG_MSG_ERROR("Failed to retrieve user application data for ID \"%016lX\"!", app_id);
+        return ret;
+    }
+
     /* Get info for the first user application title. */
     out->app_info = _titleGetTitleInfoEntryFromStorageByTitleId(NcmStorageId_Any, app_id);
 
@@ -3214,6 +3254,38 @@ static bool _titleGetUserApplicationData(u64 app_id, TitleUserApplicationData *o
     if (!ret) LOG_MSG_ERROR("Failed to retrieve user application data for ID \"%016lX\"!", app_id);
 
     return ret;
+}
+
+static TitleInfo *titleGetSingleTitleInfoEntryFromStorageFast(u8 storage_id, u64 title_id)
+{
+    if (storage_id < NcmStorageId_GameCard || storage_id > NcmStorageId_SdCard || !title_id)
+    {
+        LOG_MSG_ERROR("Invalid parameters!");
+        return NULL;
+    }
+
+    TitleStorage *title_storage = &(g_titleStorage[TITLE_STORAGE_INDEX(storage_id)]);
+    NcmContentMetaDatabase *ncm_db = &(title_storage->ncm_db);
+
+    if (!serviceIsActive(&(ncm_db->s))) return NULL;
+
+    NcmContentMetaKey meta_key = {0};
+    Result rc = ncmContentMetaDatabaseGetLatestContentMetaKey(ncm_db, &meta_key, title_id);
+    if (R_FAILED(rc)) return NULL;
+
+    NcmContentInfo *content_infos = NULL;
+    u32 content_count = 0;
+
+    if (!titleGetContentInfosByMetaKey(ncm_db, &meta_key, &content_infos, &content_count)) return NULL;
+
+    TitleInfo *title_info = titleGenerateTitleInfoEntry(storage_id, &meta_key, content_infos, content_count);
+    if (!title_info)
+    {
+        free(content_infos);
+        content_infos = NULL;
+    }
+
+    return title_info;
 }
 
 static TitleInfo *titleDuplicateTitleInfoFull(TitleInfo *title_info, TitleInfo *previous, TitleInfo *next)

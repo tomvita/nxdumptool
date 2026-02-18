@@ -34,6 +34,7 @@ static s64 g_logFileOffset = 0;
 
 static char *g_logBuffer = NULL;
 static size_t g_logBufferLength = 0;
+static bool g_nxlinkOutputEnabled = true;
 
 static const char *g_logStrFormat = "[%d-%02d-%02d %02d:%02d:%02d.%09lu] %s %s|%d|%s -> ";
 static const char *g_logSessionSeparator = "________________________________________________________________\r\n";
@@ -237,6 +238,11 @@ void logControlMutex(bool lock)
     {
         mutexUnlock(&g_logMutex);
     }
+}
+
+void logSetNxLinkOutputEnabled(bool enabled)
+{
+    SCOPED_LOCK(&g_logMutex) g_nxlinkOutputEnabled = enabled;
 }
 
 static void _logWriteStringToLogFile(const char *src)
@@ -520,6 +526,8 @@ static void logFormatFunctionName(const char *func_name, char *out, size_t out_s
 
 static void logWriteStringToNxLink(const char *str)
 {
+    if (!g_nxlinkOutputEnabled || !str || !*str) return;
+
     int fd = utilsGetNxLinkFileDescriptor();
     if (fd >= 0)
     {

@@ -108,6 +108,22 @@ bool bisStorageInitialize(void)
     return ret;
 }
 
+bool bisStorageInitializeSystemPartitionOnly(void)
+{
+    bool ret = false;
+
+    SCOPED_LOCK(&g_bisStorageMutex)
+    {
+        ret = g_bisStorageInterfaceInit;
+        if (ret) break;
+
+        /* Mount only the eMMC BIS System FAT partition. */
+        ret = g_bisStorageInterfaceInit = bisStorageMountPartition(FsBisPartitionId_System);
+    }
+
+    return ret;
+}
+
 void bisStorageExit(void)
 {
     SCOPED_LOCK(&g_bisStorageMutex)

@@ -126,27 +126,51 @@ bool titleExtractMainAndGlobalMetadata(u64 app_title_id, const char *base_output
         if (fs_ctx->section_type == NcaFsSectionType_RomFs || fs_ctx->section_type == NcaFsSectionType_Nca0RomFs) program_base_romfs_ctx = fs_ctx;
     }
 
-    if (program_patch_romfs_ctx && base_info && patch_info)
-    {
-        NcmContentInfo *base_program_content_info = titleGetContentInfoByTypeAndIdOffset(base_info, NcmContentType_Program, program_nca_ctx.id_offset);
-        if (!base_program_content_info) base_program_content_info = titleExtractGetFirstProgramContentInfo(base_info);
-
-        if (base_program_content_info &&
-            ncaInitializeContext(&base_nca_ctx, base_info->storage_id, HashFileSystemPartitionType_None, &(base_info->meta_key), base_program_content_info, &tik))
-        {
-            NcaFsSectionContext *base_same_idx = &(base_nca_ctx.fs_ctx[program_patch_romfs_ctx->section_idx]);
-            if (base_same_idx->enabled && (base_same_idx->section_type == NcaFsSectionType_RomFs || base_same_idx->section_type == NcaFsSectionType_Nca0RomFs))
-            {
-                program_base_romfs_ctx = base_same_idx;
-            }
-        }
-    }
-
     if (program_patch_romfs_ctx)
     {
-        if (romfsInitializeContext(&romfs_ctx, program_base_romfs_ctx, program_patch_romfs_ctx))
+        bool fallback_to_merged_view = program_patch_romfs_ctx->has_patch_indirect_layer;
+
+        /* Fast path: try patch-only RomFS first to avoid loading base Program NCA when possible. */
+        /* Skip this when indirect patch data is present because it depends on base storage reads. */
+        if (!fallback_to_merged_view)
         {
-            metadata_entry = romfsGetFileEntryByPath(&romfs_ctx, "/Data/Managed/Metadata/global-metadata.dat");
+            if (romfsInitializeContext(&romfs_ctx, NULL, program_patch_romfs_ctx))
+            {
+                metadata_entry = romfsGetFileEntryByPath(&romfs_ctx, "/Data/Managed/Metadata/global-metadata.dat");
+                if (metadata_entry)
+                {
+                    out_result->metadata_extracted = titleExtractCopyRomFsEntryToFile(&romfs_ctx, metadata_entry, out_result->metadata_path);
+                    fallback_to_merged_view = !out_result->metadata_extracted;
+                } else {
+                    fallback_to_merged_view = true;
+                }
+            } else {
+                fallback_to_merged_view = true;
+            }
+        }
+
+        /* Fallback: load base Program NCA and use merged base+patch view. */
+        if (fallback_to_merged_view && base_info && patch_info)
+        {
+            NcmContentInfo *base_program_content_info = titleGetContentInfoByTypeAndIdOffset(base_info, NcmContentType_Program, program_nca_ctx.id_offset);
+            if (!base_program_content_info) base_program_content_info = titleExtractGetFirstProgramContentInfo(base_info);
+
+            if (base_program_content_info &&
+                ncaInitializeContext(&base_nca_ctx, base_info->storage_id, HashFileSystemPartitionType_None, &(base_info->meta_key), base_program_content_info, &tik))
+            {
+                NcaFsSectionContext *base_same_idx = &(base_nca_ctx.fs_ctx[program_patch_romfs_ctx->section_idx]);
+                if (base_same_idx->enabled && (base_same_idx->section_type == NcaFsSectionType_RomFs || base_same_idx->section_type == NcaFsSectionType_Nca0RomFs))
+                {
+                    program_base_romfs_ctx = base_same_idx;
+                }
+            }
+
+            romfsFreeContext(&romfs_ctx);
+            if (program_base_romfs_ctx && romfsInitializeContext(&romfs_ctx, program_base_romfs_ctx, program_patch_romfs_ctx))
+            {
+                metadata_entry = romfsGetFileEntryByPath(&romfs_ctx, "/Data/Managed/Metadata/global-metadata.dat");
+                if (metadata_entry) out_result->metadata_extracted = titleExtractCopyRomFsEntryToFile(&romfs_ctx, metadata_entry, out_result->metadata_path);
+            }
         }
     } else
     if (program_base_romfs_ctx)
@@ -154,10 +178,9 @@ bool titleExtractMainAndGlobalMetadata(u64 app_title_id, const char *base_output
         if (romfsInitializeContext(&romfs_ctx, program_base_romfs_ctx, NULL))
         {
             metadata_entry = romfsGetFileEntryByPath(&romfs_ctx, "/Data/Managed/Metadata/global-metadata.dat");
+            if (metadata_entry) out_result->metadata_extracted = titleExtractCopyRomFsEntryToFile(&romfs_ctx, metadata_entry, out_result->metadata_path);
         }
     }
-
-    if (metadata_entry) out_result->metadata_extracted = titleExtractCopyRomFsEntryToFile(&romfs_ctx, metadata_entry, out_result->metadata_path);
 
     romfsFreeContext(&romfs_ctx);
     titleFreeUserApplicationData(&user_app_data);

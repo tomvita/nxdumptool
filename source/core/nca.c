@@ -1037,10 +1037,9 @@ static bool ncaInitializeFsSectionContext(NcaContext *nca_ctx, u32 section_idx)
 
     if (fs_ctx->section_type >= NcaFsSectionType_Invalid)
     {
-        u8 flags = (((u8)fs_ctx->has_patch_indirect_layer << 3) | ((u8)fs_ctx->has_patch_aes_ctr_ex_layer << 2) | ((u8)fs_ctx->has_sparse_layer << 1) | (u8)fs_ctx->has_compression_layer);
-
         LOG_MSG_ERROR("Unable to determine section type for FS section #%u in \"%s\" (FS type 0x%02X, hash type 0x%02X, encryption type 0x%02X, flags 0x%02X). Skipping FS section.", \
-                      section_idx, nca_ctx->content_id_str, fs_ctx->header.fs_type, fs_ctx->hash_type, fs_ctx->encryption_type, flags);
+                      section_idx, nca_ctx->content_id_str, fs_ctx->header.fs_type, fs_ctx->hash_type, fs_ctx->encryption_type, \
+                      (((u8)fs_ctx->has_patch_indirect_layer << 3) | ((u8)fs_ctx->has_patch_aes_ctr_ex_layer << 2) | ((u8)fs_ctx->has_sparse_layer << 1) | (u8)fs_ctx->has_compression_layer));
 
         LOG_DATA_ERROR(&(fs_ctx->header), sizeof(NcaFsHeader), "FS header dump:");
 

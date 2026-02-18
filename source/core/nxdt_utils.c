@@ -78,6 +78,11 @@ static AppletType g_programAppletType = AppletType_None;
 static AppletHookCookie g_systemOverclockCookie = {0};
 
 static bool g_longRunningProcess = false;
+static bool g_initializeGameCard = true;
+static bool g_initializeBfttf = true;
+static bool g_initializeSystemUpdate = true;
+static bool g_initializeBisStorage = true;
+static bool g_bisStorageSystemOnly = false;
 
 static const char *g_sizeSuffixes[] = { "B", "KiB", "MiB", "GiB", "TiB" };
 static const u32 g_sizeSuffixesCount = MAX_ELEMENTS(g_sizeSuffixes);
@@ -217,20 +222,20 @@ bool utilsInitializeResources(void)
             break;
         }
 
-        /* Initialize gamecard interface. */
-        if (!gamecardInitialize()) break;
+        /* Initialize gamecard interface (optional). */
+        if (g_initializeGameCard && !gamecardInitialize()) break;
 
         /* Initialize title interface. */
         if (!titleInitialize()) break;
 
-        /* Initialize BFTTF interface. */
-        if (!bfttfInitialize()) break;
+        /* Initialize BFTTF interface (optional). */
+        if (g_initializeBfttf && !bfttfInitialize()) break;
 
         /* Initialize BFSAR interface. */
         //if (!bfsarInitialize()) break;
 
-        /* Initialize system update interface. */
-        if (!systemUpdateInitialize()) break;
+        /* Initialize system update interface (optional). */
+        if (g_initializeSystemUpdate && !systemUpdateInitialize()) break;
 
         /* Mount application RomFS. */
         rc = romfsInit();
@@ -246,8 +251,8 @@ bool utilsInitializeResources(void)
         /* Setup an applet hook to change the hardware clocks after a system mode change (docked <-> undocked). */
         appletHook(&g_systemOverclockCookie, utilsOverclockSystemAppletHook, NULL);
 
-        /* Initialize eMMC BIS storage interface. */
-        if (!bisStorageInitialize()) break;
+        /* Initialize eMMC BIS storage interface (optional). */
+        if (g_initializeBisStorage && !(g_bisStorageSystemOnly ? bisStorageInitializeSystemPartitionOnly() : bisStorageInitialize())) break;
 
         /* Enable video recording whenever possible. */
         utilsEnableVideoRecording();
@@ -260,6 +265,46 @@ bool utilsInitializeResources(void)
     if (!ret) utilsPrintInitializationFailureMessage();
 
     return ret;
+}
+
+void utilsSetGameCardInitialization(bool enabled)
+{
+    SCOPED_LOCK(&g_resourcesMutex)
+    {
+        if (!g_resourcesInit) g_initializeGameCard = enabled;
+    }
+}
+
+void utilsSetBfttfInitialization(bool enabled)
+{
+    SCOPED_LOCK(&g_resourcesMutex)
+    {
+        if (!g_resourcesInit) g_initializeBfttf = enabled;
+    }
+}
+
+void utilsSetSystemUpdateInitialization(bool enabled)
+{
+    SCOPED_LOCK(&g_resourcesMutex)
+    {
+        if (!g_resourcesInit) g_initializeSystemUpdate = enabled;
+    }
+}
+
+void utilsSetBisStorageInitialization(bool enabled)
+{
+    SCOPED_LOCK(&g_resourcesMutex)
+    {
+        if (!g_resourcesInit) g_initializeBisStorage = enabled;
+    }
+}
+
+void utilsSetBisStorageSystemPartitionOnly(bool enabled)
+{
+    SCOPED_LOCK(&g_resourcesMutex)
+    {
+        if (!g_resourcesInit) g_bisStorageSystemOnly = enabled;
+    }
 }
 
 void utilsCloseResources(void)

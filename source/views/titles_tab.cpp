@@ -58,6 +58,8 @@ namespace nxdt::views
             return;
         }
 
+        (void)used_path;
+
         va_list args;
         va_start(args, fmt);
         vfprintf(fp, fmt, args);

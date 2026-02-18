@@ -38,7 +38,7 @@ extern "C" {
 /// Defines the log level used throughout the application.
 /// Log messages with a log value lower than this one won't be compiled into the binary.
 /// If a value lower than LOG_LEVEL_DEBUG or equal to/greater than LOG_LEVEL_NONE is used, logfile output will be entirely disabled.
-#define LOG_LEVEL           LOG_LEVEL_DEBUG /* TODO: change before release (warning?). */
+#define LOG_LEVEL           LOG_LEVEL_NONE /* TODO: change before release (warning?). */
 
 #if (LOG_LEVEL >= LOG_LEVEL_DEBUG) && (LOG_LEVEL < LOG_LEVEL_NONE)
 
@@ -118,6 +118,9 @@ char *logGetLastMessage(void);
 /// Use with caution.
 void logControlMutex(bool lock);
 
+/// Enables/disables real-time nxlink log output while keeping logfile writes enabled.
+void logSetNxLinkOutputEnabled(bool enabled);
+
 #else   /* (LOG_LEVEL >= LOG_LEVEL_DEBUG) && (LOG_LEVEL < LOG_LEVEL_NONE) */
 
 /// Helper macros.
@@ -150,6 +153,7 @@ void logControlMutex(bool lock);
 #define logCloseLogFile(...)                                do {} while(0)
 #define logGetLastMessage(...)                              NULL
 #define logControlMutex(...)                                do {} while(0)
+#define logSetNxLinkOutputEnabled(...)                      do {} while(0)
 
 #endif  /* (LOG_LEVEL >= LOG_LEVEL_DEBUG) && (LOG_LEVEL < LOG_LEVEL_NONE) */
 

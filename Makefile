@@ -59,12 +59,12 @@ ifeq (,$(GIT_COMMIT))
     $(error GIT_COMMIT is empty)
 endif
 
-VERSION_MAJOR		:=	2
+VERSION_MAJOR		:=	1
 VERSION_MINOR		:=	0
 VERSION_MICRO		:=	0
 
-APP_TITLE			:=	nxdumptool
-APP_AUTHOR			:=	DarkMatterCore
+APP_TITLE			:=	Breezehelper
+APP_AUTHOR			:=	tomvita
 APP_VERSION			:=	${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_MICRO}
 
 # TODO: remove this after the PoC builds are no longer needed.
